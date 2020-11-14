@@ -1,0 +1,36 @@
+.DS_Store
+*.pyc
+*.bak
+*.log
+.sass-cache
+__pycache__/
+
+# Jetbrains related files
+.idea
+.webstorm
+*.ipr
+*.iml
+
+# sublime
+*.sublime-*
+
+# GNU i18n generated files
+*.pot
+*.mo
+
+*.sqlite3
+dump.tar
+settings_local.py
+
+
+.venv/
+.env/
+env-data.js
+.site-packages
+/www/
+/media/
+/tmp/
+
+# ansible'n'deploy
+deploy.retry
+

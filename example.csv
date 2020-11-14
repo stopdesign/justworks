@@ -1,0 +1,5 @@
+name,amount,type,note
+John Fox,1884.00,employer_provided_vehicle,Code1
+Tony Pony,553.05,restricted_stock_vesting,Code2
+Anna Good,1010.03,housing_allowance,"Test, Payment, Comma"
+Anton Anon,1000,moving_expenses,222
