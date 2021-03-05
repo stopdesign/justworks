@@ -3,7 +3,7 @@ import sys
 import json
 import pyotp
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 
@@ -14,6 +14,7 @@ LOGIN_URL = "https://secure.justworks.com/login"
 OTP_URL = "https://secure.justworks.com/tfa"
 FRINGE_BENEFITS_URL = "https://secure.justworks.com/fringe_benefits/submit"
 FORM_URL = "https://secure.justworks.com/fringe_benefits/form"
+BONUS_URL = "https://secure.justworks.com/masspay/BonusPayment"
 
 
 class API:
@@ -88,7 +89,7 @@ class API:
 
     def update_csrf_token(self):
         logger.info("Update csrf token")
-        response = self.s.get(LOGIN_URL, allow_redirects=False)
+        response = self.s.get(LOGIN_URL, allow_redirects=True)
         csrf_token = self.parse_hydration_data(response.text, "form_authenticity_token")
         self.s.headers.update({"x-csrf-token": csrf_token})
 
@@ -134,13 +135,58 @@ class API:
         else:
             return response
 
-    def validate_payments(self):
-        pass
-        #
-        # url = 'https://secure.justworks.com/payments/%s/one_time_payments' % UUID
-        #
-        # r8 = s.get(url)
-        # mtcs = rx_payment.findall(r8.text)
-        # for mtc in mtcs:
-        #     print(mtc)
-        #
+    def create_bonus_payments(self, payments, pay_date, note):
+        self.poke_session()
+        self.update_csrf_token()
+
+        allocations = {}
+        for payment in payments:
+            allocations[payment["member_uuid"]] = {
+                "amount": int(round(payment["amount"] * 100))
+            }
+
+        payments_data = {
+            "formData": {
+                "pay_date": pay_date.replace(tzinfo=timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+                "eft": "true",
+                "net_pay": "false",
+                "tax_method": "flat",
+                "deductions_setting": "only401k",
+                "notes": note,
+                "work_start_date": "2021-01-01T05:00:00.000Z",
+                "work_end_date": "2021-03-31T04:00:00.000Z",
+            },
+            "allocations": allocations,
+        }
+        print(json.dumps(payments_data, indent=2, ensure_ascii=False))
+
+        response = self.s.post(BONUS_URL, json=payments_data)
+        if response.status_code == 201:
+            return None
+        else:
+            return response
+
+    def get_user_payments(self, user_uuid, user_name):
+        self.poke_session()
+        url = "https://secure.justworks.com/payments/%s/one_time_payments" % user_uuid
+
+        rx_payment = re.compile(
+            r'<a href="/pay/view/([-a-f0-9]+)">([^<]+)</a>\s*'
+            r"</td>\s*<td>([^<]+)</td>\s*<td>([^<]+)</td>\s*<td>\s*<a"
+        )
+
+        response = self.s.get(url)
+        mtcs = rx_payment.findall(response.text)
+
+        return [
+            {
+                "name": user_name,
+                "pay_uuid": mtc[0],
+                "pay_date": mtc[1],
+                "amount": mtc[2],
+                "type": mtc[3],
+            }
+            for mtc in mtcs
+        ]

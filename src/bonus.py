@@ -1,15 +1,19 @@
 import sys
 import uuid
+
 import click
 import logging
 from datetime import datetime
+
+from employee import BonusPayment
 from justworks import API
-from payroll import Payroll
 
 
 @click.command()
 @click.argument("data_csv", type=click.Path(exists=True))
-@click.option("--username", prompt="Username", help="Justworks account username.")
+@click.option(
+    "--username", prompt="Username", help="Justworks account username.", required=True
+)
 @click.option(
     "--password",
     prompt="Password (hidden)",
@@ -17,9 +21,15 @@ from payroll import Payroll
     hide_input=True,
 )
 @click.option(
+    "--pay-date",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    required=True,
+    help="Payment date.",
+)
+@click.option(
     "--dry", default=False, is_flag=True, help="Dry run. Do not change anything."
 )
-def main(data_csv, username, password, dry):
+def main(data_csv, username, password, pay_date, dry):
     """The script reads payroll data from the CSV input file
     and creates payments in the Justworks dashboard.
 
@@ -35,37 +45,21 @@ def main(data_csv, username, password, dry):
     api = API(username=username, password=password)
 
     # Get predefined values from Justworks website
-    employees, payment_dates, fringe_benefits_subtypes = api.get_constants()
+    employees, _, _ = api.get_constants()
 
     click.secho("\nPersons found: %s" % len(employees), fg="bright_blue")
 
-    click.secho("\nSupported payment dates:", fg="bright_blue")
-    for pd_key, pd_value in payment_dates.items():
-        click.secho(pd_key, fg="bright_white")
-        for day in pd_value:
-            fg = "red" if day["disabled"] else None
-            click.secho("  {value}, {description}".format(**day), fg=fg)
-
-    click.secho("\nSupported payment types:", fg="bright_blue")
-    for subtype in fringe_benefits_subtypes:
-        click.secho("{value} — {description}".format(**subtype))
-
-    payroll = Payroll(
-        employees=employees,
-        payment_dates=payment_dates,
-        fringe_benefits_subtypes=fringe_benefits_subtypes,
-        request_id=request_id,
-    )
+    bonuses = BonusPayment(employees=employees, payment_date="", request_id=request_id)
 
     click.secho("\nParse CSV file", fg="bright_blue")
 
     # Parse CSV, validate and match values
-    all_good = payroll.load_from_csv(data_csv)
+    all_good = bonuses.load_from_csv(data_csv)
 
     click.secho("\nPayments to create:", fg="bright_blue")
 
     # Print payment list
-    payroll.print_payments(sys.stdout)
+    bonuses.print_payments(sys.stdout)
 
     if not all_good:
         click.secho(
@@ -76,8 +70,10 @@ def main(data_csv, username, password, dry):
     if not dry:
         click.secho("\nCreate payments", fg="bright_blue")
 
-        # Create Justworks payments
-        res = api.create_payments(payroll.payments)
+        # Create Justworks bonus payments
+        res = api.create_bonus_payments(
+            bonuses.payments, pay_date=pay_date, note=request_id,
+        )
 
         if res:
             click.secho("\nPayments creation error.", fg="bright_red")
